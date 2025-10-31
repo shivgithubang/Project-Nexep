@@ -18,7 +18,7 @@ User authentication is handled by Clerk, providing OAuth integration and user ma
 The application uses Prisma as the ORM with a PostgreSQL database (Neon DB). The data model includes core entities: Users (with Clerk integration), Resumes, Cover Letters, Interview Quizzes, and Industry Insights. The database schema supports user profiles with industry-specific data, career documents, and performance tracking. Database operations are wrapped in server actions for security and performance.
 
 ## AI Integration
-Google's Gemini AI (gemini-1.5-flash model) powers the content generation throughout the application. AI prompts are carefully crafted to generate industry-specific content including resume improvements, cover letter creation, interview questions, and market insights. The AI responses are structured using JSON formats for consistent parsing and data handling.
+Google's Gemini AI (gemini-2.5-flash model) powers the content generation throughout the application. AI prompts are carefully crafted to generate industry-specific content including resume improvements, cover letter creation, interview questions, and market insights. The AI responses are structured using JSON formats for consistent parsing and data handling.
 
 ## Background Processing
 Inngest handles scheduled background tasks, specifically running weekly industry insight updates every Sunday at midnight. This ensures users receive current market data including salary ranges, growth rates, skill demands, and industry trends. The background jobs use the same Gemini AI integration for generating fresh market analysis.

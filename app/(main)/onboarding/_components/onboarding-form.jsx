@@ -90,17 +90,18 @@ const OnboardingForm = ({ industries }) => {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="industry">Industry</Label>
+              <Label htmlFor="industry">Industry *</Label>
               <Select
                 onValueChange={(value) => {
-                  setValue("industry", value);
+                  setValue("industry", value, { shouldValidate: true });
                   setSelectedIndustry(
                     industries.find((ind) => ind.id === value)
                   );
                   setValue("subIndustry", "");
                 }}
+                value={watchIndustry}
               >
-                <SelectTrigger id="industry">
+                <SelectTrigger id="industry" className={errors.industry ? "border-red-500" : ""}>
                   <SelectValue placeholder="Select an industry" />
                 </SelectTrigger>
                 <SelectContent>
@@ -123,11 +124,12 @@ const OnboardingForm = ({ industries }) => {
 
             {watchIndustry && (
               <div className="space-y-2">
-                <Label htmlFor="subIndustry">Specialization</Label>
+                <Label htmlFor="subIndustry">Specialization *</Label>
                 <Select
-                  onValueChange={(value) => setValue("subIndustry", value)}
+                  onValueChange={(value) => setValue("subIndustry", value, { shouldValidate: true })}
+                  value={watch("subIndustry")}
                 >
-                  <SelectTrigger id="subIndustry">
+                  <SelectTrigger id="subIndustry" className={errors.subIndustry ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select your specialization" />
                   </SelectTrigger>
                   <SelectContent>
@@ -202,6 +204,9 @@ const OnboardingForm = ({ industries }) => {
                 </>
               ) : (
                 "Complete Profile"
+                 // Reset the user's onboarding status first
+                 await resetUserProfile();
+       
               )}
             </Button>
           </form>

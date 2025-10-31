@@ -5,7 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export const generateAIInsights = async (industry) => {
   const prompt = `
@@ -33,8 +33,48 @@ export const generateAIInsights = async (industry) => {
   const text = response.text();
   const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
 
-  return JSON.parse(cleanedText);
+  const insights = JSON.parse(cleanedText);
+  
+  // Convert salary ranges from USD to INR
+  insights.salaryRanges = insights.salaryRanges.map(range => ({
+    ...range,
+    min: Math.round(range.min * 83.5), // USD to INR conversion
+    max: Math.round(range.max * 83.5),
+    median: Math.round(range.median * 83.5),
+    currency: 'INR' // Add currency indicator
+  }));
+
+  return insights;
 };
+
+export async function updateUserIndustry(newIndustry) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.update({
+    where: { clerkUserId: userId },
+    data: { industry: newIndustry },
+  });
+
+  // Generate new insights for the new industry
+  const insights = await generateAIInsights(newIndustry);
+  
+  // Update or create industry insights
+  const industryInsight = await db.industryInsight.upsert({
+    where: { industry: newIndustry },
+    update: {
+      ...insights,
+      nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      industry: newIndustry,
+      ...insights,
+      nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  return industryInsight;
+}
 
 export async function getIndustryInsights() {
   const { userId } = await auth();

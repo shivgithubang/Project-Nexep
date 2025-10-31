@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   BarChart,
   Bar,
@@ -27,14 +27,43 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { industries } from "@/data/industries";
+import { convertUSDtoINR, formatCurrency } from "@/lib/utils";
+import { updateUserIndustry } from "@/actions/dashboard";
 
 const DashboardView = ({ insights }) => {
-  // Transform salary data for the chart
+  const [selectedIndustry, setSelectedIndustry] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleIndustryChange = async (industryId) => {
+    try {
+      setIsLoading(true);
+      setSelectedIndustry(industryId);
+      const updatedInsights = await updateUserIndustry(industryId);
+      window.location.reload(); // Refresh to get new insights
+    } catch (error) {
+      console.error("Error updating industry:", error);
+      // You might want to show an error toast here
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Transform salary data for the chart (data is already in INR)
   const salaryData = insights.salaryRanges.map((range) => ({
     name: range.role,
-    min: range.min / 1000,
-    max: range.max / 1000,
-    median: range.median / 1000,
+    min: Math.round(range.min / 1000), // Convert to thousands
+    max: Math.round(range.max / 1000),
+    median: Math.round(range.median / 1000),
   }));
 
   const getDemandLevelColor = (level) => {
@@ -75,8 +104,32 @@ const DashboardView = ({ insights }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-4">
         <Badge variant="outline">Last updated: {lastUpdatedDate}</Badge>
+        
+        <div className="flex items-center gap-6">
+          {/* Industry Selector */}
+          <div className="flex items-center gap-2">
+            <Label>Industry:</Label>
+            <Select 
+              value={selectedIndustry} 
+              onValueChange={handleIndustryChange}
+              disabled={isLoading}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select industry" />
+              </SelectTrigger>
+              <SelectContent>
+                {industries.map((industry) => (
+                  <SelectItem key={industry.id} value={industry.id}>
+                    {industry.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+
+        </div>
       </div>
 
       {/* Market Overview Cards */}
@@ -148,7 +201,7 @@ const DashboardView = ({ insights }) => {
         <CardHeader>
           <CardTitle>Salary Ranges by Role</CardTitle>
           <CardDescription>
-            Displaying minimum, median, and maximum salaries (in thousands)
+            Displaying minimum, median, and maximum salaries (in thousands of INR)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -166,7 +219,7 @@ const DashboardView = ({ insights }) => {
                           <p className="font-medium">{label}</p>
                           {payload.map((item) => (
                             <p key={item.name} className="text-sm">
-                              {item.name}: ${item.value}K
+                              {item.name}: {formatCurrency(item.value * 1000, 'INR')}
                             </p>
                           ))}
                         </div>

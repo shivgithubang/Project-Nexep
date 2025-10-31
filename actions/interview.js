@@ -5,7 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export async function generateQuiz() {
   const { userId } = await auth();
@@ -20,6 +20,7 @@ export async function generateQuiz() {
   });
 
   if (!user) throw new Error("User not found");
+  if (!user.industry) throw new Error("Please complete your profile first to generate quiz questions");
 
   const prompt = `
     Generate 10 technical interview questions for a ${
@@ -29,6 +30,7 @@ export async function generateQuiz() {
   }.
     
     Each question should be multiple choice with 4 options.
+    Include a mix of difficulty levels: 3 easy, 4 medium, and 3 hard questions.
     
     Return the response in this JSON format only, no additional text:
     {
@@ -37,23 +39,43 @@ export async function generateQuiz() {
           "question": "string",
           "options": ["string", "string", "string", "string"],
           "correctAnswer": "string",
-          "explanation": "string"
+          "explanation": "string",
+          "difficulty": "easy" | "medium" | "hard"
         }
       ]
     }
   `;
 
   try {
+    console.log("Generating quiz for industry:", user.industry);
     const result = await model.generateContent(prompt);
     const response = result.response;
     const text = response.text();
+    console.log("Raw AI response:", text.substring(0, 200));
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
     const quiz = JSON.parse(cleanedText);
 
+    if (!quiz.questions || quiz.questions.length === 0) {
+      throw new Error("No questions generated");
+    }
+
+    console.log("Successfully generated", quiz.questions.length, "questions");
     return quiz.questions;
   } catch (error) {
     console.error("Error generating quiz:", error);
-    throw new Error("Failed to generate quiz questions");
+    if (error.message.includes("API key") || error.message.includes("API_KEY")) {
+      throw new Error("API key error. Please check your Gemini API key configuration.");
+    }
+    if (error.message.includes("quota") || error.message.includes("limit")) {
+      throw new Error("API quota exceeded. Please try again later.");
+    }
+    if (error.message.includes("JSON")) {
+      throw new Error("Failed to parse quiz data. Please try again.");
+    }
+    if (error.message.includes("network") || error.message.includes("fetch")) {
+      throw new Error("Network error. Please check your internet connection and try again.");
+    }
+    throw new Error("Failed to generate quiz questions. Please try again or contact support if the issue persists.");
   }
 }
 
