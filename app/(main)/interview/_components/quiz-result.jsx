@@ -61,9 +61,12 @@ export default function QuizResult({
       </CardContent>
 
       {!hideStartNew && (
-        <CardFooter>
+        <CardFooter className="flex flex-col space-y-2">
           <Button onClick={onStartNew} className="w-full">
             Start New Quiz
+          </Button>
+          <Button variant="outline" onClick={() => window.location.href = '/interview'} className="w-full">
+            Back to Interview Preparation
           </Button>
         </CardFooter>
       )}

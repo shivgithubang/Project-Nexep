@@ -28,11 +28,20 @@ import {
 } from "@/components/ui/select";
 import useFetch from "@/hooks/use-fetch";
 import { onboardingSchema } from "@/app/lib/schema";
-import { updateUser } from "@/actions/user";
+import { updateUser, resetUserProfile } from "@/actions/user";
 
 const OnboardingForm = ({ industries }) => {
   const router = useRouter();
   const [selectedIndustry, setSelectedIndustry] = useState(null);
+  const [isProfileChange, setIsProfileChange] = useState(false);
+
+  // Check if this is a profile change from dashboard
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      setIsProfileChange(params.get('from') === 'dashboard');
+    }
+  }, []);
 
   const {
     loading: updateLoading,
@@ -52,13 +61,22 @@ const OnboardingForm = ({ industries }) => {
 
   const onSubmit = async (values) => {
     try {
+      // Format the industry string
       const formattedIndustry = `${values.industry}-${values.subIndustry
         .toLowerCase()
         .replace(/ /g, "-")}`;
 
+      if (isProfileChange) {
+        // Reset user profile first if this is a profile change
+        await resetUserProfile();
+      }
+
+      // Update with new profile data
       await updateUserFn({
-        ...values,
         industry: formattedIndustry,
+        experience: values.experience,
+        bio: values.bio || "",
+        skills: values.skills || "",
       });
     } catch (error) {
       console.error("Onboarding error:", error);
@@ -80,11 +98,12 @@ const OnboardingForm = ({ industries }) => {
       <Card className="w-full max-w-lg mt-10 mx-2">
         <CardHeader>
           <CardTitle className="gradient-title text-4xl">
-            Complete Your Profile
+            {isProfileChange ? 'Update Your Profile' : 'Complete Your Profile'}
           </CardTitle>
           <CardDescription>
-            Select your industry to get personalized career insights and
-            recommendations.
+            {isProfileChange 
+              ? 'Start fresh with a new profile. Your previous data will be reset.'
+              : 'Select your industry to get personalized career insights and recommendations.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -203,10 +222,7 @@ const OnboardingForm = ({ industries }) => {
                   Saving...
                 </>
               ) : (
-                "Complete Profile"
-                 // Reset the user's onboarding status first
-                 await resetUserProfile();
-       
+                  isProfileChange ? "Update Profile" : "Complete Profile"
               )}
             </Button>
           </form>

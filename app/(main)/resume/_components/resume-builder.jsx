@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { saveResume } from "@/actions/resume";
+import { saveResume, analyzeResume } from "@/actions/resume";
 import { EntryForm } from "./entry-form";
 import useFetch from "@/hooks/use-fetch";
 import { useUser } from "@clerk/nextjs";
@@ -55,6 +55,14 @@ export default function ResumeBuilder({ initialContent }) {
     data: saveResult,
     error: saveError,
   } = useFetch(saveResume);
+
+  const {
+    loading: isAnalyzing,
+    fn: analyzeResumeFn,
+    data: analyzeResult,
+    error: analyzeError,
+    setData: setAnalyzeResult,
+  } = useFetch(analyzeResume);
 
   // Watch form fields for preview updates
   const formValues = watch();
@@ -146,6 +154,30 @@ export default function ResumeBuilder({ initialContent }) {
     }
   };
 
+  const handleAnalyzeCurrent = async () => {
+    try {
+      const contentToAnalyze = previewContent || "";
+      if (!contentToAnalyze) return toast.error("No resume content to analyze");
+      await analyzeResumeFn(contentToAnalyze);
+    } catch (error) {
+      console.error("Analyze error:", error);
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    const allowed = ["text/plain", "text/markdown"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Only .txt or .md uploads supported for text extraction. For PDFs please paste text in the editor.");
+      return;
+    }
+
+    const text = await file.text();
+    setPreviewContent(text);
+    // analyze uploaded content
+    await analyzeResumeFn(text);
+  };
+
   return (
     <div data-color-mode="light" className="space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-center gap-2">
@@ -183,6 +215,25 @@ export default function ResumeBuilder({ initialContent }) {
               </>
             )}
           </Button>
+          <Button variant="outline" onClick={handleAnalyzeCurrent} disabled={isAnalyzing}>
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              "Analyze Resume"
+            )}
+          </Button>
+          <label className="inline-block">
+            <input
+              type="file"
+              accept=".txt,.md,text/plain,text/markdown"
+              className="hidden"
+              onChange={(e) => handleFileUpload(e.target.files?.[0])}
+            />
+            <Button variant="ghost">Upload & Analyze</Button>
+          </label>
         </div>
       </div>
 
@@ -401,6 +452,39 @@ export default function ResumeBuilder({ initialContent }) {
               preview={resumeMode}
             />
           </div>
+          {/* Analysis results */}
+          {analyzeResult && (
+            <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+              <h3 className="font-semibold">Resume Analysis</h3>
+              <p className="text-sm">ATS Score: <strong>{analyzeResult.atsScore}</strong></p>
+              {analyzeResult.issues?.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-medium">Issues</p>
+                  <ul className="list-disc list-inside text-sm">
+                    {analyzeResult.issues.map((it, idx) => (
+                      <li key={idx}>{it}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {analyzeResult.suggestions?.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-medium">Suggestions</p>
+                  <ul className="list-disc list-inside text-sm">
+                    {analyzeResult.suggestions.map((s, idx) => (
+                      <li key={idx}><strong>{s.area}:</strong> {s.advice}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {analyzeResult.improvedSummary && (
+                <div className="mt-2">
+                  <p className="font-medium">Improved Summary</p>
+                  <p className="text-sm">{analyzeResult.improvedSummary}</p>
+                </div>
+              )}
+            </div>
+          )}
           <div className="hidden">
             <div id="resume-pdf">
               <MDEditor.Markdown

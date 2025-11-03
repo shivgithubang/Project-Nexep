@@ -21,9 +21,11 @@ import { Clock } from "lucide-react";
 export default function Quiz() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState([]);
-  const [showExplanation, setShowExplanation] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerActive, setTimerActive] = useState(false);
+  const [questionCount, setQuestionCount] = useState(10);
+  const [selectedCategory, setSelectedCategory] = useState("Technical");
+  const [currentCategory, setCurrentCategory] = useState("Technical");
 
   const {
     loading: generatingQuiz,
@@ -81,7 +83,6 @@ export default function Quiz() {
   const handleNext = () => {
     if (currentQuestion < quizData.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
-      setShowExplanation(false);
     } else {
       finishQuiz();
     }
@@ -101,7 +102,7 @@ export default function Quiz() {
     setTimerActive(false);
     const score = calculateScore();
     try {
-      await saveQuizResultFn(quizData, answers, score);
+      await saveQuizResultFn(quizData, answers, score, currentCategory);
       toast.success("Quiz completed!");
     } catch (error) {
       toast.error(error.message || "Failed to save quiz results");
@@ -117,10 +118,12 @@ export default function Quiz() {
   const startNewQuiz = () => {
     setCurrentQuestion(0);
     setAnswers([]);
-    setShowExplanation(false);
     setTimeLeft(null);
     setTimerActive(false);
-    generateQuizFn();
+    // reset category to default
+    setSelectedCategory("Technical");
+    setCurrentCategory("Technical");
+    generateQuizFn("Technical", questionCount);
     setResultData(null);
   };
 
@@ -144,21 +147,71 @@ export default function Quiz() {
           <CardTitle>Ready to test your knowledge?</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">
-            This quiz contains 10 questions specific to your industry and
-            skills. Take your time and choose the best answer for each question.
-          </p>
-          {quizError && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-800 font-medium">Failed to generate quiz</p>
-              <p className="text-red-600 text-sm mt-1">
-                {quizError.message || "Please try again or check your profile settings."}
+          <div className="space-y-4">
+            <p className="text-muted-foreground">
+              Select the number of questions for your quiz. Questions will be specific to your industry and skills.
+            </p>
+            <div className="flex flex-col space-y-2">
+              <Label>Number of Questions</Label>
+              <RadioGroup
+                value={questionCount.toString()}
+                onValueChange={(value) => setQuestionCount(parseInt(value))}
+                className="flex space-x-4"
+              >
+                {[10, 15, 20].map((count) => (
+                  <div key={count} className="flex items-center space-x-2">
+                    <RadioGroupItem value={count.toString()} id={`q-${count}`} />
+                    <Label htmlFor={`q-${count}`}>{count}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              <p className="text-sm text-muted-foreground mt-2">
+                Time limit: {questionCount} minutes
               </p>
             </div>
-          )}
+            <div className="flex flex-col space-y-2">
+              <Label>Quiz Type</Label>
+              <RadioGroup
+                value={selectedCategory}
+                onValueChange={(value) => setSelectedCategory(value)}
+                className="flex flex-row space-x-4"
+              >
+                {[
+                  "Technical",
+                  "DSA",
+                  "Aptitude",
+                  "Behavioral",
+                  "System Design",
+                ].map((cat) => (
+                  <div key={cat} className="flex items-center space-x-2">
+                    <RadioGroupItem value={cat} id={`cat-${cat}`} />
+                    <Label htmlFor={`cat-${cat}`}>{cat}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              <p className="text-sm text-muted-foreground mt-2">
+                Recommended: Technical (based on your profile)
+              </p>
+            </div>
+            {quizError && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 font-medium">Failed to generate quiz</p>
+                <p className="text-red-600 text-sm mt-1">
+                  {quizError.message || "Please try again or check your profile settings."}
+                </p>
+              </div>
+            )}
+          </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={generateQuizFn} className="w-full" disabled={generatingQuiz}>
+          <Button
+            onClick={() => {
+              setCurrentCategory(selectedCategory);
+              generateQuizFn(selectedCategory, questionCount);
+            }}
+            className="w-full"
+            disabled={generatingQuiz}
+          >
             {generatingQuiz ? "Generating Quiz..." : "Start Quiz"}
           </Button>
         </CardFooter>
@@ -221,23 +274,8 @@ export default function Quiz() {
           ))}
         </RadioGroup>
 
-        {showExplanation && (
-          <div className="mt-4 p-4 bg-muted rounded-lg">
-            <p className="font-medium">Explanation:</p>
-            <p className="text-muted-foreground">{question.explanation}</p>
-          </div>
-        )}
       </CardContent>
       <CardFooter className="flex justify-between">
-        {!showExplanation && (
-          <Button
-            onClick={() => setShowExplanation(true)}
-            variant="outline"
-            disabled={!answers[currentQuestion]}
-          >
-            Show Explanation
-          </Button>
-        )}
         <Button
           onClick={handleNext}
           disabled={!answers[currentQuestion] || savingResult}

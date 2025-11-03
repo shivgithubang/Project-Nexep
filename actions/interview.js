@@ -7,9 +7,18 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-export async function generateQuiz() {
+export async function generateQuiz(category = "Technical", questionCount = 10) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Validate question count
+  if (![10, 15, 20].includes(questionCount)) {
+    questionCount = 10; // Default to 10 if invalid
+  }
+
+  // Validate category
+  const allowed = ["Technical", "DSA", "Aptitude", "Behavioral", "System Design"];
+  if (!allowed.includes(category)) category = "Technical";
 
   const user = await db.user.findUnique({
     where: { clerkUserId: userId },
@@ -22,15 +31,25 @@ export async function generateQuiz() {
   if (!user) throw new Error("User not found");
   if (!user.industry) throw new Error("Please complete your profile first to generate quiz questions");
 
+  // Build category-specific instructions
+  let categoryInstruction = "technical";
+  if (category === "DSA") {
+    categoryInstruction = "data structures and algorithms (DSA) focusing on algorithmic problem solving and complexity";
+  } else if (category === "Aptitude") {
+    categoryInstruction = "aptitude, logical reasoning and quantitative problems";
+  } else if (category === "Behavioral") {
+    categoryInstruction = "behavioral and situational judgment questions focused on communication, teamwork, and problem-solving";
+  } else if (category === "System Design") {
+    categoryInstruction = "system design concepts and architecture-focused multiple choice questions (design trade-offs, scalability, components)";
+  }
+
   const prompt = `
-    Generate 10 technical interview questions for a ${
-      user.industry
-    } professional${
+    Generate ${questionCount} ${categoryInstruction} questions for a ${user.industry} professional${
     user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
   }.
     
     Each question should be multiple choice with 4 options.
-    Include a mix of difficulty levels: 3 easy, 4 medium, and 3 hard questions.
+    Include a mix of difficulty levels: ${Math.floor(questionCount * 0.3)} easy, ${Math.floor(questionCount * 0.4)} medium, and ${Math.floor(questionCount * 0.3)} hard questions.
     
     Return the response in this JSON format only, no additional text:
     {
@@ -79,7 +98,7 @@ export async function generateQuiz() {
   }
 }
 
-export async function saveQuizResult(questions, answers, score) {
+export async function saveQuizResult(questions, answers, score, category = "Technical") {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
@@ -138,7 +157,7 @@ export async function saveQuizResult(questions, answers, score) {
         userId: user.id,
         quizScore: score,
         questions: questionResults,
-        category: "Technical",
+        category,
         improvementTip,
       },
     });

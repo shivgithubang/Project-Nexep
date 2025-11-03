@@ -39,12 +39,18 @@ export async function updateUser(data) {
           });
         }
 
-        // Now update the user
+        // Reset and update the user with fresh data
         const updatedUser = await tx.user.update({
           where: {
             id: user.id,
           },
           data: {
+            // Reset all fields first
+            industry: null,
+            experience: null,
+            bio: null,
+            skills: null,
+            // Then set new values
             industry: data.industry,
             experience: data.experience,
             bio: data.bio,

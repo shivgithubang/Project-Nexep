@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -25,6 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
@@ -41,6 +43,7 @@ import { convertUSDtoINR, formatCurrency } from "@/lib/utils";
 import { updateUserIndustry } from "@/actions/dashboard";
 
 const DashboardView = ({ insights }) => {
+  const router = useRouter();
   const [selectedIndustry, setSelectedIndustry] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -108,27 +111,33 @@ const DashboardView = ({ insights }) => {
         <Badge variant="outline">Last updated: {lastUpdatedDate}</Badge>
         
         <div className="flex items-center gap-6">
-          {/* Industry Selector */}
-          <div className="flex items-center gap-2">
-            <Label>Industry:</Label>
-            <Select 
-              value={selectedIndustry} 
-              onValueChange={handleIndustryChange}
-              disabled={isLoading}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select industry" />
-              </SelectTrigger>
-              <SelectContent>
-                {industries.map((industry) => (
-                  <SelectItem key={industry.id} value={industry.id}>
-                    {industry.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Industry Selector and Change Profile */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label>Industry:</Label>
+              <Select 
+                value={selectedIndustry} 
+                onValueChange={handleIndustryChange}
+                disabled={isLoading}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {industries.map((industry) => (
+                    <SelectItem key={industry.id} value={industry.id}>
+                      {industry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => router.push('/onboarding?from=dashboard')}>
+              Change Profile
+            </Button>
           </div>
-
-
         </div>
       </div>
 
