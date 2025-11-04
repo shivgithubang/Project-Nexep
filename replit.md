@@ -15,7 +15,7 @@ The application uses Next.js 15 with React 19 as the frontend framework, impleme
 User authentication is handled by Clerk, providing OAuth integration and user management. The middleware implements route protection, redirecting unauthenticated users from protected routes (/dashboard, /resume, /interview, /ai-cover-letter, /onboarding) to sign-in pages. User sessions are managed server-side with automatic redirection flows configured for post-authentication routing.
 
 ## Database Architecture
-The application uses Prisma as the ORM with a PostgreSQL database (Neon DB). The data model includes core entities: Users (with Clerk integration), Resumes, Cover Letters, Interview Quizzes, and Industry Insights. The database schema supports user profiles with industry-specific data, career documents, and performance tracking. Database operations are wrapped in server actions for security and performance.
+The application uses MongoDB as the database with Mongoose as the ODM (Object Document Mapper). The data model includes core entities: Users (with Clerk integration), Resumes, Cover Letters, Interview Quizzes, and Industry Insights. The database schema supports user profiles with industry-specific data, career documents, and performance tracking. Database operations are wrapped in server actions for security and performance.
 
 ## AI Integration
 Google's Gemini AI (gemini-2.5-flash model) powers the content generation throughout the application. AI prompts are carefully crafted to generate industry-specific content including resume improvements, cover letter creation, interview questions, and market insights. The AI responses are structured using JSON formats for consistent parsing and data handling.
@@ -35,8 +35,8 @@ The application extensively uses Next.js server actions for secure backend opera
 - **Google Gemini AI**: Powers all content generation including resumes, cover letters, interview questions, and industry insights
 
 ## Database
-- **Neon DB**: PostgreSQL hosting service for production database
-- **Prisma**: ORM for database operations and schema management
+- **MongoDB / MongoDB Atlas**: Document database for application data
+- **Mongoose**: ODM for schema definitions and database operations
 
 ## Background Processing
 - **Inngest**: Handles scheduled tasks and background job processing for industry data updates

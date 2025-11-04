@@ -1,8 +1,10 @@
 "use server";
 
-import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import connectMongoose from "@/lib/mongoose";
+import IndustryInsight from "@/models/IndustryInsight";
+import User from "@/models/User";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -47,62 +49,63 @@ export const generateAIInsights = async (industry) => {
   return insights;
 };
 
+// Helper function to convert MongoDB document to plain object
+const convertToPlainObject = (doc) => {
+  if (!doc) return null;
+  const obj = JSON.parse(JSON.stringify(doc));
+  // Convert dates to ISO strings
+  if (obj.nextUpdate) obj.nextUpdate = new Date(obj.nextUpdate).toISOString();
+  if (obj.createdAt) obj.createdAt = new Date(obj.createdAt).toISOString();
+  if (obj.updatedAt) obj.updatedAt = new Date(obj.updatedAt).toISOString();
+  // Remove MongoDB specific fields if needed
+  delete obj.__v;
+  return obj;
+};
+
 export async function updateUserIndustry(newIndustry) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+  await connectMongoose();
 
-  const user = await db.user.update({
-    where: { clerkUserId: userId },
-    data: { industry: newIndustry },
-  });
+  const user = await User.findOneAndUpdate(
+    { clerkUserId: userId }, 
+    { industry: newIndustry }, 
+    { new: true }
+  ).lean();
 
   // Generate new insights for the new industry
   const insights = await generateAIInsights(newIndustry);
-  
-  // Update or create industry insights
-  const industryInsight = await db.industryInsight.upsert({
-    where: { industry: newIndustry },
-    update: {
-      ...insights,
-      nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-    create: {
-      industry: newIndustry,
-      ...insights,
-      nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-  });
 
-  return industryInsight;
+  // Update or create industry insights
+  const industryInsight = await IndustryInsight.findOneAndUpdate(
+    { industry: newIndustry },
+    { ...insights, nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+    { upsert: true, new: true, setDefaultsOnInsert: true, lean: true }
+  );
+
+  return convertToPlainObject(industryInsight);
 }
 
 export async function getIndustryInsights() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+  await connectMongoose();
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-    include: {
-      industryInsight: true,
-    },
-  });
-
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
 
   // If no insights exist, generate them
-  if (!user.industryInsight) {
+  const existing = await IndustryInsight.findOne({ industry: user.industry }).lean();
+  if (!existing) {
     const insights = await generateAIInsights(user.industry);
-
-    const industryInsight = await db.industryInsight.create({
-      data: {
-        industry: user.industry,
-        ...insights,
-        nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
+    const industryInsight = await IndustryInsight.create({
+      industry: user.industry,
+      ...insights,
+      nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
-    return industryInsight;
+    return convertToPlainObject(industryInsight.toObject());
   }
 
-  return user.industryInsight;
+  return convertToPlainObject(existing);
 }

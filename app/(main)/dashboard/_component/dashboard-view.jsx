@@ -99,7 +99,7 @@ const DashboardView = ({ insights }) => {
   const outlookColor = getMarketOutlookInfo(insights.marketOutlook).color;
 
   // Format dates using date-fns
-  const lastUpdatedDate = format(new Date(insights.lastUpdated), "dd/MM/yyyy");
+  const lastUpdatedDate = format(new Date(insights.updatedAt || insights.createdAt), "dd/MM/yyyy");
   const nextUpdateDistance = formatDistanceToNow(
     new Date(insights.nextUpdate),
     { addSuffix: true }
@@ -108,7 +108,9 @@ const DashboardView = ({ insights }) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4">
-        <Badge variant="outline">Last updated: {lastUpdatedDate}</Badge>
+        {(insights.updatedAt || insights.createdAt) && (
+          <Badge variant="outline">Last updated: {lastUpdatedDate}</Badge>
+        )}
         
         <div className="flex items-center gap-6">
           {/* Industry Selector and Change Profile */}

@@ -1,8 +1,10 @@
 "use server";
 
-import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import connectMongoose from "@/lib/mongoose";
+import User from "@/models/User";
+import Assessment from "@/models/Assessment";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -10,6 +12,8 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 export async function generateQuiz(category = "Technical", questionCount = 10) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  await connectMongoose();
 
   // Validate question count
   if (![10, 15, 20].includes(questionCount)) {
@@ -20,33 +24,64 @@ export async function generateQuiz(category = "Technical", questionCount = 10) {
   const allowed = ["Technical", "DSA", "Aptitude", "Behavioral", "System Design"];
   if (!allowed.includes(category)) category = "Technical";
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-    select: {
-      industry: true,
-      skills: true,
-    },
-  });
+  const user = await User.findOne({ clerkUserId: userId }).select("industry skills").lean();
 
   if (!user) throw new Error("User not found");
   if (!user.industry) throw new Error("Please complete your profile first to generate quiz questions");
 
-  // Build category-specific instructions
-  let categoryInstruction = "technical";
+  // Build category-specific and industry-specific instructions
+  let categoryInstruction = "";
+  let industryContext = "";
+
+  // Set industry context based on user's industry
+  switch (user.industry) {
+    case "energy":
+      industryContext = "energy sector, including renewable energy, power systems, energy management, and utility operations";
+      break;
+    case "tech":
+      industryContext = "technology sector, including software development, IT systems, and digital solutions";
+      break;
+    case "finance":
+      industryContext = "financial services, including banking, investment, and financial analysis";
+      break;
+    case "healthcare":
+      industryContext = "healthcare industry, including medical systems, healthcare management, and patient care";
+      break;
+    case "manufacturing":
+      industryContext = "manufacturing sector, including production systems, industrial processes, and quality control";
+      break;
+    case "telecom":
+      industryContext = "telecommunications industry, including network systems, communication infrastructure, and telecom services";
+      break;
+    default:
+      industryContext = user.industry;
+  }
+
+  // Set category instruction with industry context
   if (category === "DSA") {
-    categoryInstruction = "data structures and algorithms (DSA) focusing on algorithmic problem solving and complexity";
+    categoryInstruction = "data structures and algorithms (DSA) questions relevant to solving problems in the " + industryContext;
   } else if (category === "Aptitude") {
-    categoryInstruction = "aptitude, logical reasoning and quantitative problems";
+    categoryInstruction = "aptitude and logical reasoning problems commonly encountered in the " + industryContext;
   } else if (category === "Behavioral") {
-    categoryInstruction = "behavioral and situational judgment questions focused on communication, teamwork, and problem-solving";
+    categoryInstruction = "behavioral and situational judgment questions specific to roles in the " + industryContext;
   } else if (category === "System Design") {
-    categoryInstruction = "system design concepts and architecture-focused multiple choice questions (design trade-offs, scalability, components)";
+    categoryInstruction = "system design and architecture questions focused on " + industryContext;
+  } else {
+    categoryInstruction = "technical questions specific to working in the " + industryContext;
   }
 
   const prompt = `
-    Generate ${questionCount} ${categoryInstruction} questions for a ${user.industry} professional${
-    user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
-  }.
+    Generate ${questionCount} ${categoryInstruction}.
+    
+    The questions should be highly specific to the ${user.industry} industry${
+    user.skills?.length ? ` and incorporate concepts from ${user.skills.join(", ")}` : ""
+    }.
+    
+    Important guidelines:
+    1. Questions must be directly related to real-world scenarios in the ${user.industry} industry
+    2. Include industry-specific terminology and concepts
+    3. Focus on practical knowledge needed for ${user.industry} roles
+    4. Each question should test understanding of industry-standard practices
     
     Each question should be multiple choice with 4 options.
     Include a mix of difficulty levels: ${Math.floor(questionCount * 0.3)} easy, ${Math.floor(questionCount * 0.4)} medium, and ${Math.floor(questionCount * 0.3)} hard questions.
@@ -67,9 +102,9 @@ export async function generateQuiz(category = "Technical", questionCount = 10) {
 
   try {
     console.log("Generating quiz for industry:", user.industry);
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+  const result = await model.generateContent(prompt);
+  const response = result.response;
+  const text = response.text();
     console.log("Raw AI response:", text.substring(0, 200));
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
     const quiz = JSON.parse(cleanedText);
@@ -97,15 +132,13 @@ export async function generateQuiz(category = "Technical", questionCount = 10) {
     throw new Error("Failed to generate quiz questions. Please try again or contact support if the issue persists.");
   }
 }
-
 export async function saveQuizResult(questions, answers, score, category = "Technical") {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  await connectMongoose();
 
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
 
   const questionResults = questions.map((q, index) => ({
@@ -152,14 +185,12 @@ export async function saveQuizResult(questions, answers, score, category = "Tech
   }
 
   try {
-    const assessment = await db.assessment.create({
-      data: {
-        userId: user.id,
-        quizScore: score,
-        questions: questionResults,
-        category,
-        improvementTip,
-      },
+    const assessment = await Assessment.create({
+      userId: user._id,
+      quizScore: score,
+      questions: questionResults,
+      category,
+      improvementTip,
     });
 
     return assessment;
@@ -173,21 +204,13 @@ export async function getAssessments() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  await connectMongoose();
 
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
 
   try {
-    const assessments = await db.assessment.findMany({
-      where: {
-        userId: user.id,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    const assessments = await Assessment.find({ userId: user._id }).sort({ createdAt: 1 }).lean();
 
     return assessments;
   } catch (error) {

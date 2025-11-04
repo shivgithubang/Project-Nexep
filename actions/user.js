@@ -1,72 +1,43 @@
 "use server";
 
-import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import connectMongoose from "@/lib/mongoose";
+import User from "@/models/User";
+import IndustryInsight from "@/models/IndustryInsight";
 import { generateAIInsights } from "./dashboard";
 
 export async function updateUser(data) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  await connectMongoose();
 
+  const user = await User.findOne({ clerkUserId: userId });
   if (!user) throw new Error("User not found");
 
   try {
-    // Start a transaction to handle both operations
-    const result = await db.$transaction(
-      async (tx) => {
-        // First check if industry exists
-        let industryInsight = await tx.industryInsight.findUnique({
-          where: {
-            industry: data.industry,
-          },
-        });
+    // Find or create industry insight
+    let industryInsight = await IndustryInsight.findOne({ industry: data.industry });
+    if (!industryInsight) {
+      const insights = await generateAIInsights(data.industry);
+      industryInsight = await IndustryInsight.create({
+        industry: data.industry,
+        ...insights,
+        nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+    }
 
-        // If industry doesn't exist, create it with default values
-        if (!industryInsight) {
-          const insights = await generateAIInsights(data.industry);
+    // Update user fields
+    user.industry = data.industry || null;
+    user.experience = data.experience ?? null;
+    user.bio = data.bio ?? null;
+    user.skills = data.skills ?? [];
 
-          industryInsight = await db.industryInsight.create({
-            data: {
-              industry: data.industry,
-              ...insights,
-              nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          });
-        }
-
-        // Reset and update the user with fresh data
-        const updatedUser = await tx.user.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            // Reset all fields first
-            industry: null,
-            experience: null,
-            bio: null,
-            skills: null,
-            // Then set new values
-            industry: data.industry,
-            experience: data.experience,
-            bio: data.bio,
-            skills: data.skills,
-          },
-        });
-
-        return { updatedUser, industryInsight };
-      },
-      {
-        timeout: 10000, // default: 5000
-      }
-    );
+    await user.save();
 
     revalidatePath("/");
-    return { success: true, user: result.updatedUser };
+    return { success: true, user };
   } catch (error) {
     console.error("Error updating user and industry:", error.message);
     throw new Error("Failed to update profile: " + error.message);
@@ -77,22 +48,12 @@ export async function getUserOnboardingStatus() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  await connectMongoose();
 
+  const user = await User.findOne({ clerkUserId: userId }).select("industry").lean();
   if (!user) throw new Error("User not found");
 
   try {
-    const user = await db.user.findUnique({
-      where: {
-        clerkUserId: userId,
-      },
-      select: {
-        industry: true,
-      },
-    });
-
     return {
       isOnboarded: !!user?.industry,
     };

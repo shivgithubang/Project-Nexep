@@ -1,9 +1,12 @@
 "use server";
 
-import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { revalidatePath } from "next/cache";
+import connectMongoose from "@/lib/mongoose";
+import User from "@/models/User";
+import Resume from "@/models/Resume";
+import IndustryInsight from "@/models/IndustryInsight";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -12,25 +15,16 @@ export async function saveResume(content) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
+  await connectMongoose();
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
 
   try {
-    const resume = await db.resume.upsert({
-      where: {
-        userId: user.id,
-      },
-      update: {
-        content,
-      },
-      create: {
-        userId: user.id,
-        content,
-      },
-    });
+    const resume = await Resume.findOneAndUpdate(
+      { userId: user._id },
+      { content },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     revalidatePath("/resume");
     return resume;
@@ -44,31 +38,21 @@ export async function getResume() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
+  await connectMongoose();
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
 
-  return await db.resume.findUnique({
-    where: {
-      userId: user.id,
-    },
-  });
+  return await Resume.findOne({ userId: user._id }).lean();
 }
 
 export async function improveWithAI({ current, type }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-    include: {
-      industryInsight: true,
-    },
-  });
-
+  await connectMongoose();
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
+
+  const industryInsight = await IndustryInsight.findOne({ industry: user.industry }).lean();
 
   const prompt = `
     As an expert resume writer, improve the following ${type} description for a ${user.industry} professional.
@@ -101,12 +85,11 @@ export async function analyzeResume(content) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-    include: { industryInsight: true },
-  });
-
+  await connectMongoose();
+  const user = await User.findOne({ clerkUserId: userId }).lean();
   if (!user) throw new Error("User not found");
+
+  const industryInsight = await IndustryInsight.findOne({ industry: user.industry }).lean();
 
   // Build prompt to evaluate ATS score and provide targeted suggestions
   const prompt = `
